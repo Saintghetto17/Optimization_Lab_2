@@ -217,19 +217,6 @@ def fill_tables(col_names: list[str], tables: list[PrettyTable],
                 experiment_number += 1
 
 
-# for i in range(4):
-#     tables_nelder_mead.append(PrettyTable(column_names_nelder_mead))
-#     datas_nelder_mead.append([])
-#     for j in range(len(INIT_POINTS)):
-#         res: optimize.OptimizeResult = optimize.minimize(lambda x: function_value(x, function[i]), INIT_POINTS[j],
-#                                                          method='nelder-mead')
-#         datas_nelder_mead[i].append(function[i].value)
-#         datas_nelder_mead[i].append(GLOBAL_MIN[i])
-#         datas_nelder_mead[i].append(INIT_POINTS[j])
-#         datas_nelder_mead[i].append(res.nit)
-#         datas_nelder_mead[i].append(res.fun)
-
-
 def fill_graphic(ax_fig: Axes,
                  ax_fig_2D1: Axes,
                  ax_fig_2D2: Axes, results: list[list[tuple]], regime: REGIME, numbers_to_display: list[int],
