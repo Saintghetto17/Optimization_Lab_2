@@ -19,6 +19,7 @@ x, y = sp.symbols('x y')
 class NAME(enum.Enum):
     CONSTANT_STEP = "CONSTANT STEP NEWTON"
     CHANGING_STEP_TERNARY = "TERNARY STEP NEWTON"
+    NEWTON_CG = "NEWTON CG METHOD"
 
 
 class FUNCTION(enum.Enum):
@@ -30,12 +31,13 @@ class FUNCTION(enum.Enum):
 class REGIME(enum.Enum):
     CONSTANT_STEP = 0
     CHANGING_STEP_TERNARY = 1
+    NEWTON_CG = 2
 
 
 FUNCTIONS: list[FUNCTION] = [FUNCTION.FUNC_1, FUNCTION.FUNC_2, FUNCTION.FUNC_3]
 GLOBAL_MIN: list[float] = [25 / 2, -1, 0]
-TYPES_METHODS: list[NAME] = [NAME.CONSTANT_STEP, NAME.CHANGING_STEP_TERNARY]
-REGIMES: list[REGIME] = [REGIME.CONSTANT_STEP, REGIME.CHANGING_STEP_TERNARY]
+TYPES_METHODS: list[NAME] = [NAME.CONSTANT_STEP, NAME.CHANGING_STEP_TERNARY, NAME.NEWTON_CG]
+REGIMES: list[REGIME] = [REGIME.CONSTANT_STEP, REGIME.CHANGING_STEP_TERNARY, NAME.NEWTON_CG]
 DISPLAY_FUNCTION = ["x^2 + (2x - 4y)^2 + (x-5)^2", "x^2 + y^2 - xy + 2x - 4y + 3", "(1 - x)^2 + 100(y - x^2)^2"]
 
 
@@ -82,6 +84,13 @@ def ternary_search_min(func: typing.Callable[[tuple[float, float]], float],
 
 
 def get_s_k_hesse(func: FUNCTION, dot: tuple[float, float], grad_vector: tuple[float, ...]) -> tuple[float, ...]:
+    """
+    Uses sympy.hessian for counting hesse_matrix, numpy for matrix inversion
+    :param func:
+    :param dot:
+    :param grad_vector:
+    :return:
+    """
     hesse_matrix = sp.hessian(func.value, (x, y))
     prev_point = {x: dot[0], y: dot[1]}
     hessian_at_point = np.array(hesse_matrix.subs(prev_point), dtype=float)
@@ -158,7 +167,6 @@ def newton(initial_dot: tuple[float, float],
         prev_dot = current_dot
 
 
-######################################################## LEARNING RATE | FAST RATE ##############################################
 # Every point will be gone throw every learning rate for analysis
 INIT_POINTS: list[tuple[float, float] | tuple[None, None]] = []  # start points
 EPSILON = []  # EPS at which algorithm will stop
@@ -185,14 +193,41 @@ def fill_tables(col_names: list[str], tables: list[PrettyTable],
                 datas[func].append(DISPLAY_FUNCTION[func])
                 datas[func].append(GLOBAL_MIN[func])
                 datas[func].append(INIT_POINTS[i])
-                datas[func].append(results[func][j + len(INIT_POINTS) * i][1])
-                datas[func].append(EPSILON[j])
-                if regime == REGIME.CONSTANT_STEP:
-                    datas[func].append(CONSTANT_STEPS[j])
-                elif newton_name == NAME.CHANGING_STEP_TERNARY:
-                    datas[func].append(NAME.CHANGING_STEP_TERNARY.value)
-                datas[func].append(results[func][j + len(INIT_POINTS) * i][0])
+                if newton_name != NAME.NEWTON_CG:
+                    datas[func].append(results[func][j + len(INIT_POINTS) * i][1])
+                    datas[func].append(EPSILON[j])
+                    if regime == REGIME.CONSTANT_STEP:
+                        datas[func].append(CONSTANT_STEPS[j])
+                    elif newton_name == NAME.CHANGING_STEP_TERNARY:
+                        datas[func].append(NAME.CHANGING_STEP_TERNARY.value)
+                    datas[func].append(results[func][j + len(INIT_POINTS) * i][0])
+
+                else:
+                    gradient_symbolic = [sp.diff(FUNCTIONS[func].value, var) for var in (x, y)]
+                    compute_gradient = sp.lambdify((x, y), gradient_symbolic, 'numpy')
+                    compute_func = sp.lambdify((x, y), FUNCTIONS[func].value, 'numpy')
+                    res_optimize_scipy = optimize.minimize(lambda xy: compute_func(xy[0], xy[1]),
+                                                           np.array([INIT_POINTS[i][0], INIT_POINTS[i][1]]),
+                                                           method="Newton-CG",
+                                                           jac=lambda xy: compute_gradient(xy[0], xy[1]))
+                    datas[func].append(res_optimize_scipy.nit)
+                    datas[func].append(EPSILON[j])
+                    datas[func].append(newton_name.value)
+                    datas[func].append(res_optimize_scipy.fun)
                 experiment_number += 1
+
+
+# for i in range(4):
+#     tables_nelder_mead.append(PrettyTable(column_names_nelder_mead))
+#     datas_nelder_mead.append([])
+#     for j in range(len(INIT_POINTS)):
+#         res: optimize.OptimizeResult = optimize.minimize(lambda x: function_value(x, function[i]), INIT_POINTS[j],
+#                                                          method='nelder-mead')
+#         datas_nelder_mead[i].append(function[i].value)
+#         datas_nelder_mead[i].append(GLOBAL_MIN[i])
+#         datas_nelder_mead[i].append(INIT_POINTS[j])
+#         datas_nelder_mead[i].append(res.nit)
+#         datas_nelder_mead[i].append(res.fun)
 
 
 def fill_graphic(ax_fig: Axes,
@@ -254,7 +289,8 @@ def fill_data(col_names: list[str],
 
     # results tuple(iterations, value)
     results: list[list[tuple]] = []
-    fill_graphic(ax_fig, ax_fig_2D1, ax_fig_2D2, results, regime, numbers_to_display, newton_name)
+    if newton_name != NAME.NEWTON_CG:
+        fill_graphic(ax_fig, ax_fig_2D1, ax_fig_2D2, results, regime, numbers_to_display, newton_name)
     fill_tables(col_names, tables, datas, newton_name, regime, results)
 
 
