@@ -8,7 +8,7 @@ import enum
 from math import sqrt
 import matplotlib.pyplot as plt
 import numpy as np
-
+import numpy.linalg as ln
 import warnings
 
 warnings.filterwarnings("ignore")
@@ -20,6 +20,8 @@ class NAME(enum.Enum):
     CONSTANT_STEP = "CONSTANT STEP NEWTON"
     CHANGING_STEP_TERNARY = "TERNARY STEP NEWTON"
     NEWTON_CG = "NEWTON CG METHOD"
+    QUASI_NEWTON = "QUASI-NEWTON METHOD"
+    QUASI_SCIPY = "QUASI-SCIPY"
     WOLFE_CONDITION = "WOLFE CONDITION"
 
 
@@ -33,17 +35,23 @@ class REGIME(enum.Enum):
     CONSTANT_STEP = 0
     CHANGING_STEP_TERNARY = 1
     NEWTON_CG = 2
-    WOLFE_CONDITION = 3
+    QUASI_NEWTON = 3
+    QUASI_SCIPY = 4
+    WOLFE_CONDITION = 5
 
 
 FUNCTIONS: list[FUNCTION] = [FUNCTION.FUNC_1, FUNCTION.FUNC_2, FUNCTION.FUNC_3]
 GLOBAL_MIN: list[float] = [25 / 2, -1, 0]
-TYPES_METHODS: list[NAME] = [NAME.CONSTANT_STEP, NAME.CHANGING_STEP_TERNARY, NAME.NEWTON_CG, NAME.WOLFE_CONDITION]
-REGIMES: list[REGIME] = [REGIME.CONSTANT_STEP, REGIME.CHANGING_STEP_TERNARY, REGIME.NEWTON_CG, REGIME.WOLFE_CONDITION]
+TYPES_METHODS: list[NAME] = [NAME.CONSTANT_STEP, NAME.CHANGING_STEP_TERNARY, NAME.NEWTON_CG, NAME.QUASI_NEWTON,
+                             NAME.QUASI_SCIPY,
+                             NAME.WOLFE_CONDITION]
+REGIMES: list[REGIME] = [REGIME.CONSTANT_STEP, REGIME.CHANGING_STEP_TERNARY, REGIME.NEWTON_CG, REGIME.QUASI_NEWTON,
+                         NAME.QUASI_SCIPY,
+                         REGIME.WOLFE_CONDITION]
 DISPLAY_FUNCTION = ["x^2 + (2x - 4y)^2 + (x-5)^2", "x^2 + y^2 - xy + 2x - 4y + 3", "(1 - x)^2 + 100(y - x^2)^2"]
 
 
-def gradient(dot: tuple[float, float], func: FUNCTION) -> tuple[float, ...]:
+def gradient(dot, func: FUNCTION) -> tuple[float, ...]:
     """
     Calculates gradient of function : R^2 -> R
     :param dot: Dot at which to compute the gradient
@@ -125,6 +133,50 @@ def step_by_wolfe_condition(func: FUNCTION, x_k: tuple[float, float], p_k, c1: f
             return left
         left += 0.2
     return 1
+
+
+def bfgs_method(f: FUNCTION, x_0: tuple[float, float], eps=0.001) -> tuple[float, int]:
+    """
+
+    :param f: function for minimization
+    :param grad: gradient function for minimization
+    :param x_0: Initial guess
+    :param eps: Stop
+    :return:  min value of func
+    """
+    temp_dot_grad = gradient(x_0, f)
+    func_symbolic = sp.lambdify((x, y), f.value, 'numpy')
+    func_real = lambda dot: func_symbolic(dot[0], dot[1])
+    k = 0
+    grad_f_k = np.array([temp_dot_grad[0], temp_dot_grad[1]])
+    N = len(x_0)
+    I = np.eye(N, dtype=float)
+    H_k = I
+    x_k = np.array([x_0[0], x_0[1]])
+    iterations = 0
+    # grad_f_k x_k p_k
+    while ln.norm(grad_f_k) > eps:
+        p_k = -np.dot(H_k, grad_f_k)
+        line_search = optimize.line_search(func_real, lambda dot: np.array(
+            [gradient(dot, f)[0], gradient(dot, f)[1]]), x_k, p_k)
+        alpha_k = line_search[0]
+        x_k_1 = x_k + alpha_k * p_k
+        s_k = x_k_1 - x_k
+        # update x_k
+        x_k = x_k_1
+
+        temp_dot_grad_k_1 = gradient(x_k_1, f)
+        grad_f_k_1 = np.array([temp_dot_grad_k_1[0], temp_dot_grad_k_1[1]])
+        y_k = grad_f_k_1 - grad_f_k
+        # update grad_f_k
+        grad_f_k = grad_f_k_1
+
+        iterations += 1
+        r_k = 1.0 / (np.dot(y_k, s_k))
+        left_matrix = I - r_k * s_k[:, np.newaxis] * y_k[np.newaxis, :]
+        right_matrix = I - r_k * y_k[:, np.newaxis] * s_k[np.newaxis, :]
+        H_k = np.dot(left_matrix, np.dot(H_k, right_matrix)) + (r_k * s_k[:, np.newaxis] * s_k[np.newaxis, :])
+    return func_real(x_k), iterations
 
 
 def next_step(prev_dot: tuple[float, float],
@@ -223,7 +275,7 @@ def fill_tables(col_names: list[str], tables: list[PrettyTable],
                 datas[func].append(DISPLAY_FUNCTION[func])
                 datas[func].append(GLOBAL_MIN[func])
                 datas[func].append(INIT_POINTS[i])
-                if newton_name != NAME.NEWTON_CG:
+                if newton_name != NAME.NEWTON_CG and newton_name != NAME.QUASI_SCIPY:
                     datas[func].append(results[func][j + len(INIT_POINTS) * i][1])
                     datas[func].append(EPSILON[j])
                     if regime == REGIME.CONSTANT_STEP:
@@ -236,10 +288,16 @@ def fill_tables(col_names: list[str], tables: list[PrettyTable],
                     gradient_symbolic = [sp.diff(FUNCTIONS[func].value, var) for var in (x, y)]
                     compute_gradient = sp.lambdify((x, y), gradient_symbolic, 'numpy')
                     compute_func = sp.lambdify((x, y), FUNCTIONS[func].value, 'numpy')
-                    res_optimize_scipy = optimize.minimize(lambda xy: compute_func(xy[0], xy[1]),
-                                                           np.array([INIT_POINTS[i][0], INIT_POINTS[i][1]]),
-                                                           method="Newton-CG",
-                                                           jac=lambda xy: compute_gradient(xy[0], xy[1]))
+                    if newton_name == NAME.NEWTON_CG:
+                        res_optimize_scipy = optimize.minimize(lambda xy: compute_func(xy[0], xy[1]),
+                                                               np.array([INIT_POINTS[i][0], INIT_POINTS[i][1]]),
+                                                               method="Newton-CG",
+                                                               jac=lambda xy: compute_gradient(xy[0], xy[1]))
+                    else:
+                        res_optimize_scipy = optimize.minimize(lambda xy: compute_func(xy[0], xy[1]),
+                                                               np.array([INIT_POINTS[i][0], INIT_POINTS[i][1]]),
+                                                               method="bfgs",
+                                                               jac="3-point")
                     datas[func].append(res_optimize_scipy.nit)
                     datas[func].append(EPSILON[j])
                     datas[func].append(newton_name.value)
@@ -260,9 +318,10 @@ def fill_graphic(ax_fig: Axes,
                 try:
                     buffer = newton(INIT_POINTS[i], EPSILON[j], FUNCTIONS[func],
                                     regime,
-                                    learning_rate=learning_rate)
+                                    learning_rate=learning_rate) if newton_name != NAME.QUASI_NEWTON else bfgs_method(
+                        FUNCTIONS[func], INIT_POINTS[i])
                     results[func].append(buffer[:2])
-                    if newton_name != NAME.WOLFE_CONDITION:
+                    if newton_name != NAME.WOLFE_CONDITION and newton_name != NAME.QUASI_NEWTON:
                         if exp_cnt in numbers_to_display:
                             l, = ax_fig.plot(buffer[2][0], buffer[2][1], buffer[2][2], '-')
                             ax_fig.scatter(buffer[2][0], buffer[2][1], buffer[2][2])
@@ -307,7 +366,7 @@ def fill_data(col_names: list[str],
 
     # results tuple(iterations, value)
     results: list[list[tuple]] = []
-    if newton_name != NAME.NEWTON_CG:
+    if newton_name != NAME.NEWTON_CG and newton_name != NAME.QUASI_SCIPY:
         fill_graphic(ax_fig, ax_fig_2D1, ax_fig_2D2, results, regime, numbers_to_display, newton_name)
     fill_tables(col_names, tables, datas, newton_name, regime, results)
 
