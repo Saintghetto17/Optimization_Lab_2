@@ -20,6 +20,7 @@ class NAME(enum.Enum):
     CONSTANT_STEP = "CONSTANT STEP NEWTON"
     CHANGING_STEP_TERNARY = "TERNARY STEP NEWTON"
     NEWTON_CG = "NEWTON CG METHOD"
+    WOLFE_CONDITION = "WOLFE CONDITION"
 
 
 class FUNCTION(enum.Enum):
@@ -32,12 +33,13 @@ class REGIME(enum.Enum):
     CONSTANT_STEP = 0
     CHANGING_STEP_TERNARY = 1
     NEWTON_CG = 2
+    WOLFE_CONDITION = 3
 
 
 FUNCTIONS: list[FUNCTION] = [FUNCTION.FUNC_1, FUNCTION.FUNC_2, FUNCTION.FUNC_3]
 GLOBAL_MIN: list[float] = [25 / 2, -1, 0]
-TYPES_METHODS: list[NAME] = [NAME.CONSTANT_STEP, NAME.CHANGING_STEP_TERNARY, NAME.NEWTON_CG]
-REGIMES: list[REGIME] = [REGIME.CONSTANT_STEP, REGIME.CHANGING_STEP_TERNARY, NAME.NEWTON_CG]
+TYPES_METHODS: list[NAME] = [NAME.CONSTANT_STEP, NAME.CHANGING_STEP_TERNARY, NAME.NEWTON_CG, NAME.WOLFE_CONDITION]
+REGIMES: list[REGIME] = [REGIME.CONSTANT_STEP, REGIME.CHANGING_STEP_TERNARY, REGIME.NEWTON_CG, REGIME.WOLFE_CONDITION]
 DISPLAY_FUNCTION = ["x^2 + (2x - 4y)^2 + (x-5)^2", "x^2 + y^2 - xy + 2x - 4y + 3", "(1 - x)^2 + 100(y - x^2)^2"]
 
 
@@ -99,6 +101,32 @@ def get_s_k_hesse(func: FUNCTION, dot: tuple[float, float], grad_vector: tuple[f
     return product_vector
 
 
+def step_by_wolfe_condition(func: FUNCTION, x_k: tuple[float, float], p_k, c1: float = 0.0001,
+                            c2: float = 0.9) -> float:
+    # f(x_k + k*p_k)
+    f_x_k_k_p_k = lambda k: func.value.subs({x: x_k[0] + k * p_k[0], y: x_k[1] + k * p_k[1]})
+    # f(x_k)
+    f_x_k = func.value.subs({x: x_k[0], y: x_k[1]})
+    # grad_f(x_k)^T
+    grad_vector_x_k_transposed = np.array([gradient(x_k, func)])
+    # p_k
+    p_k_vector = np.array([[pk] for pk in p_k])
+    # grad_f(x_k)^T * p_k
+    grad_f_k_transposed_p_k_prod = (grad_vector_x_k_transposed @ p_k_vector)[0][0]
+    left = -5
+    right = 5
+    while left < right:
+        # grad_f(x_k + k * p_k) ^ T
+        grad_vector_x_k_k_p_k_transposed = np.array([gradient((x_k[0] + left * p_k[0], x_k[1] + left * p_k[1]), func)])
+        # grad_f(x_k + k * p_k) ^ T * p_k
+        grad_vector_x_k_k_p_k_transposed_prod = (grad_vector_x_k_k_p_k_transposed @ p_k_vector)[0][0]
+        if (f_x_k_k_p_k(left) <= f_x_k + c1 * left * grad_f_k_transposed_p_k_prod and
+                grad_vector_x_k_k_p_k_transposed_prod >= c2 * grad_f_k_transposed_p_k_prod):
+            return left
+        left += 0.2
+    return 1
+
+
 def next_step(prev_dot: tuple[float, float],
               gradient_vector: tuple[float, ...],
               regime: REGIME,
@@ -113,13 +141,15 @@ def next_step(prev_dot: tuple[float, float],
     :param constant_step: Optional. If regime is set to LEARNING_RATE, then it should not be None
     :return: x_{k+1}
     """
-
     s_k = get_s_k_hesse(func, prev_dot, gradient_vector)
     if regime == REGIME.CONSTANT_STEP:
         return prev_dot[0] - constant_step * s_k[0], prev_dot[1] - constant_step * s_k[1]
     elif regime == REGIME.CHANGING_STEP_TERNARY:
         step: float = ternary_search_min(lambda xy: func.value.subs({x: xy[0], y: xy[1]}), -5, 5,
                                          s_k, prev_dot)
+        return prev_dot[0] - step * s_k[0], prev_dot[1] - step * s_k[1]
+    elif regime == REGIME.WOLFE_CONDITION:
+        step: float = step_by_wolfe_condition(func, prev_dot, (-s_k[0], -s_k[1]))
         return prev_dot[0] - step * s_k[0], prev_dot[1] - step * s_k[1]
 
 
@@ -174,7 +204,7 @@ CONSTANT_STEPS = []  # different learning rates
 for i in range(2):
     INIT_POINTS.append((random.randint(1, 5), random.randint(1, 5)))
     CONSTANT_STEPS.append(random.uniform(0.5, 1.5))
-    EPSILON.append(random.uniform(0, 0.001))
+    EPSILON.append(random.uniform(0, 0.01))
 
 legend_data = [[], []]
 legend_data2D1 = [[], []]
@@ -198,8 +228,8 @@ def fill_tables(col_names: list[str], tables: list[PrettyTable],
                     datas[func].append(EPSILON[j])
                     if regime == REGIME.CONSTANT_STEP:
                         datas[func].append(CONSTANT_STEPS[j])
-                    elif newton_name == NAME.CHANGING_STEP_TERNARY:
-                        datas[func].append(NAME.CHANGING_STEP_TERNARY.value)
+                    else:
+                        datas[func].append(newton_name.value)
                     datas[func].append(results[func][j + len(INIT_POINTS) * i][0])
 
                 else:
@@ -232,21 +262,22 @@ def fill_graphic(ax_fig: Axes,
                                     regime,
                                     learning_rate=learning_rate)
                     results[func].append(buffer[:2])
-                    if exp_cnt in numbers_to_display:
-                        l, = ax_fig.plot(buffer[2][0], buffer[2][1], buffer[2][2], '-')
-                        ax_fig.scatter(buffer[2][0], buffer[2][1], buffer[2][2])
-                        legend_data[0].append(l)
-                        legend_data[1].append(newton_name.value + " " + str(exp_cnt))
-                        if ax_fig_2D1 is not None and ax_fig_2D2 is not None:
-                            points_x = buffer[2][0]
-                            points_y = buffer[2][1]
-                            l2d, = ax_fig_2D2.plot(points_x, points_y)
-                            if func == 0:
-                                legend_data2D1[0].append(l2d)
-                                legend_data2D1[1].append(newton_name.value + " " + str(exp_cnt))
-                            if func == 1:
-                                legend_data2D2[0].append(l2d)
-                                legend_data2D2[1].append(newton_name.value + " " + str(exp_cnt))
+                    if newton_name != NAME.WOLFE_CONDITION:
+                        if exp_cnt in numbers_to_display:
+                            l, = ax_fig.plot(buffer[2][0], buffer[2][1], buffer[2][2], '-')
+                            ax_fig.scatter(buffer[2][0], buffer[2][1], buffer[2][2])
+                            legend_data[0].append(l)
+                            legend_data[1].append(newton_name.value + " " + str(exp_cnt))
+                            if ax_fig_2D1 is not None and ax_fig_2D2 is not None:
+                                points_x = buffer[2][0]
+                                points_y = buffer[2][1]
+                                l2d, = ax_fig_2D2.plot(points_x, points_y)
+                                if func == 0:
+                                    legend_data2D1[0].append(l2d)
+                                    legend_data2D1[1].append(newton_name.value + " " + str(exp_cnt))
+                                if func == 1:
+                                    legend_data2D2[0].append(l2d)
+                                    legend_data2D2[1].append(newton_name.value + " " + str(exp_cnt))
                 except OverflowError:
                     results[func].append((None, None))
                 exp_cnt += 1
