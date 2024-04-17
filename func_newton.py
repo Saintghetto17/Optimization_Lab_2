@@ -1,4 +1,5 @@
 import random
+import time
 import typing
 import sympy as sp
 from matplotlib.axes import Axes
@@ -283,11 +284,12 @@ def fill_tables(col_names: list[str], tables: list[PrettyTable],
                     else:
                         datas[func].append(newton_name.value)
                     datas[func].append(results[func][j + len(INIT_POINTS) * i][0])
-
+                    datas[func].append(results[func][j + len(INIT_POINTS) * i][2])
                 else:
                     gradient_symbolic = [sp.diff(FUNCTIONS[func].value, var) for var in (x, y)]
                     compute_gradient = sp.lambdify((x, y), gradient_symbolic, 'numpy')
                     compute_func = sp.lambdify((x, y), FUNCTIONS[func].value, 'numpy')
+                    start_time = time.time()
                     if newton_name == NAME.NEWTON_CG:
                         res_optimize_scipy = optimize.minimize(lambda xy: compute_func(xy[0], xy[1]),
                                                                np.array([INIT_POINTS[i][0], INIT_POINTS[i][1]]),
@@ -298,10 +300,12 @@ def fill_tables(col_names: list[str], tables: list[PrettyTable],
                                                                np.array([INIT_POINTS[i][0], INIT_POINTS[i][1]]),
                                                                method="bfgs",
                                                                jac="3-point")
+                    end_time = time.time()
                     datas[func].append(res_optimize_scipy.nit)
                     datas[func].append(EPSILON[j])
                     datas[func].append(newton_name.value)
                     datas[func].append(res_optimize_scipy.fun)
+                    datas[func].append(end_time - start_time)
                 experiment_number += 1
 
 
@@ -316,11 +320,14 @@ def fill_graphic(ax_fig: Axes,
             for j in range(len(EPSILON)):
                 learning_rate = CONSTANT_STEPS[j]
                 try:
+                    start_time = time.time()
                     buffer = newton(INIT_POINTS[i], EPSILON[j], FUNCTIONS[func],
                                     regime,
                                     learning_rate=learning_rate) if newton_name != NAME.QUASI_NEWTON else bfgs_method(
-                        FUNCTIONS[func], INIT_POINTS[i])
-                    results[func].append(buffer[:2])
+                        FUNCTIONS[func], INIT_POINTS[i], EPSILON[j])
+                    end_time = time.time()
+                    res_iter_time = buffer[:2][0], buffer[:2][1], end_time - start_time
+                    results[func].append(res_iter_time)
                     if newton_name != NAME.WOLFE_CONDITION and newton_name != NAME.QUASI_NEWTON:
                         if exp_cnt in numbers_to_display:
                             l, = ax_fig.plot(buffer[2][0], buffer[2][1], buffer[2][2], '-')
@@ -426,7 +433,7 @@ def show_result():
                 TYPE=TYPES_METHODS[i].value))
         column_names: list[str] = ['№', 'FUNCTION', 'GLOBAL_MIN', 'INIT_POINT', 'ITERATIONS', 'EPS',
                                    TYPES_METHODS[i].value,
-                                   'VALUE']
+                                   'VALUE', 'TIME']
         tables: list[PrettyTable] = []
         datas: list[list[typing.Any]] = []
         fill_data(column_names, tables, datas,
