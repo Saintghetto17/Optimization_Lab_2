@@ -30,7 +30,7 @@ class FUNCTION(enum.Enum):
     FUNC_1 = x ** 2 + (2 * x - 4 * y) ** 2 + (x - 5) ** 2
     FUNC_2 = x ** 2 + y ** 2 - x * y + 2 * x - 4 * y + 3
     FUNC_3 = (1 - x) ** 2 + 100 * (y - x ** 2) ** 2
-    FUNC4 = x ** 4 + y ** 4 - 4 * x * y
+    FUNC_4 = x ** 4 + y ** 4 - 4 * x * y
 
 
 class REGIME(enum.Enum):
@@ -42,7 +42,7 @@ class REGIME(enum.Enum):
     WOLFE_CONDITION = 5
 
 
-FUNCTIONS: list[FUNCTION] = [FUNCTION.FUNC_1, FUNCTION.FUNC_2, FUNCTION.FUNC_3, FUNCTION.FUNC4]
+FUNCTIONS: list[FUNCTION] = [FUNCTION.FUNC_1, FUNCTION.FUNC_2, FUNCTION.FUNC_3, FUNCTION.FUNC_4]
 GLOBAL_MIN: list[float] = [25 / 2, -1, 0, -2]
 TYPES_METHODS: list[NAME] = [NAME.CONSTANT_STEP, NAME.CHANGING_STEP_TERNARY, NAME.NEWTON_CG, NAME.QUASI_NEWTON,
                              NAME.QUASI_SCIPY,
@@ -247,6 +247,9 @@ def newton(initial_dot: tuple[float, float],
     prev_dot: tuple[float, float] = initial_dot
     iterations: int = 0
     cord_data = [[], [], []]
+    cord_data[0].append(initial_dot[0])
+    cord_data[1].append(initial_dot[1])
+    cord_data[2].append(func.value.subs({x: initial_dot[0], y: initial_dot[1]}))
     while True:
         iterations += 1
         current_gradient: tuple[float, ...] = gradient(prev_dot, func)
@@ -265,10 +268,6 @@ def newton(initial_dot: tuple[float, float],
 INIT_POINTS: list[tuple[float, float] | tuple[None, None]] = [(1, 5), (3, 2), (0, 0)]  # start points
 EPSILON = [0.001, 0.0001, 0.001]  # EPS at which algorithm will stop
 CONSTANT_STEPS = [0.1, 0.01, 0.01]  # different learning rates
-
-legend_data = [[], []]
-legend_data2D1 = [[], []]
-legend_data2D2 = [[], []]
 
 
 def fill_tables(col_names: list[str], tables: list[PrettyTable],
@@ -326,9 +325,10 @@ def fill_tables(col_names: list[str], tables: list[PrettyTable],
                 experiment_number += 1
 
 
-def fill_graphic(ax_fig: Axes,
-                 ax_fig_2D1: Axes,
-                 ax_fig_2D2: Axes, results: list[list[tuple]], regime: REGIME, numbers_to_display: list[int],
+data_visual = [[[], []], [[], []], [[], []]]
+
+
+def fill_graphic(results: list[list[tuple]], regime: REGIME, numbers_to_display: list[int],
                  newton_name: NAME):
     exp_cnt = 0
     for func in range(len(FUNCTIONS)):
@@ -345,22 +345,12 @@ def fill_graphic(ax_fig: Axes,
                     end_time = time.time()
                     res_iter_time = buffer[:2][0], buffer[:2][1], end_time - start_time
                     results[func].append(res_iter_time)
-                    if newton_name != NAME.WOLFE_CONDITION and newton_name != NAME.QUASI_NEWTON:
-                        if exp_cnt in numbers_to_display:
-                            l, = ax_fig.plot(buffer[2][0], buffer[2][1], buffer[2][2], '-')
-                            ax_fig.scatter(buffer[2][0], buffer[2][1], buffer[2][2])
-                            legend_data[0].append(l)
-                            legend_data[1].append(newton_name.value + " " + str(exp_cnt))
-                            if ax_fig_2D1 is not None and ax_fig_2D2 is not None:
-                                points_x = buffer[2][0]
-                                points_y = buffer[2][1]
-                                l2d, = ax_fig_2D2.plot(points_x, points_y)
-                                if func == 0:
-                                    legend_data2D1[0].append(l2d)
-                                    legend_data2D1[1].append(newton_name.value + " " + str(exp_cnt))
-                                if func == 1:
-                                    legend_data2D2[0].append(l2d)
-                                    legend_data2D2[1].append(newton_name.value + " " + str(exp_cnt))
+                    if func != 3 and i != 2 and j != 2:
+                        if newton_name != NAME.WOLFE_CONDITION and newton_name != NAME.QUASI_NEWTON:
+                            if regime == REGIME.CONSTANT_STEP:
+                                data_visual[func][0].append(buffer[2])
+                            if regime == REGIME.CHANGING_STEP_TERNARY:
+                                data_visual[func][1].append(buffer[2])
                 except OverflowError:
                     results[func].append((None, None))
                 exp_cnt += 1
@@ -369,9 +359,6 @@ def fill_graphic(ax_fig: Axes,
 def fill_data(col_names: list[str],
               tables: list[PrettyTable],
               datas: list[list[typing.Any]],
-              ax_fig: Axes,
-              ax_fig_2D1: Axes,
-              ax_fig_2D2: Axes,
               newton_name: NAME, regime: REGIME,
               numbers_to_display: list[int]) -> None:
     """
@@ -391,7 +378,7 @@ def fill_data(col_names: list[str],
     # results tuple(iterations, value)
     results: list[list[tuple]] = []
     if newton_name != NAME.NEWTON_CG and newton_name != NAME.QUASI_SCIPY:
-        fill_graphic(ax_fig, ax_fig_2D1, ax_fig_2D2, results, regime, numbers_to_display, newton_name)
+        fill_graphic(results, regime, numbers_to_display, newton_name)
     fill_tables(col_names, tables, datas, newton_name, regime, results)
 
 
@@ -414,35 +401,6 @@ def print_tables(cols: list[str], tables: list[PrettyTable], datas: list[list[ty
         print()
 
 
-figure_method_steps = plt.figure()
-ax_fms = figure_method_steps.add_subplot(projection='3d')
-
-# VISUALIZATION OF OUR GRAPHICS
-
-x_coords = y_coords = np.arange(-3, 3, 0.001)
-X_coords, Y_coords = np.meshgrid(x_coords, y_coords)
-func_1 = sp.lambdify((x, y), FUNCTION.FUNC_1.value, 'numpy')
-func_2 = sp.lambdify((x, y), FUNCTION.FUNC_2.value, 'numpy')
-
-Z1 = np.array(func_1(np.ravel(X_coords), np.ravel(Y_coords))).reshape(X_coords.shape)
-Z2 = np.array(func_2(np.ravel(X_coords), np.ravel(Y_coords))).reshape(X_coords.shape)
-
-figure = plt.figure(figsize=(14, 10))
-
-ax1 = figure.add_subplot(2, 2, 1, projection='3d')
-ax1.plot_surface(X_coords, Y_coords, Z1)
-ax2 = figure.add_subplot(2, 2, 2)
-levels_list1 = [12.5, 13, 14, 15, 16, 17, 18, 19, 20, 30, 40, 50, 60, 70, 80, 90, 100]
-cs1 = ax2.contour(X_coords, Y_coords, Z1, levels=levels_list1)
-cs1.clabel()
-
-ax4 = figure.add_subplot(2, 2, 4)
-levels_list2 = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
-cs2 = ax4.contour(X_coords, Y_coords, Z2, levels=levels_list2)
-
-cs2.clabel()
-
-
 def show_result():
     """
     Shows all graphics and tables of results
@@ -457,10 +415,105 @@ def show_result():
                                    'VALUE', 'TIME']
         tables: list[PrettyTable] = []
         datas: list[list[typing.Any]] = []
-        fill_data(column_names, tables, datas,
-                  ax_fms, ax2, ax4, TYPES_METHODS[i], REGIMES[i], [1, 10])
+        fill_data(column_names, tables, datas, TYPES_METHODS[i], REGIMES[i], [1, 10])
         print_tables(column_names, tables, datas)
     plt.show()
 
 
 show_result()
+
+
+def visual():
+    fig = plt.figure(figsize=(21, 7))
+    fig_contur = plt.figure(figsize=(21, 7))
+
+    def calculate_z1(X, Y):
+        return X ** 2 + (2 * X - 4 * Y) ** 2 + (X - 5) ** 2
+
+    def calculate_z2(X, Y):
+        return X ** 2 + Y ** 2 - X * Y + 2 * X - 4 * Y + 3
+
+    def calculate_z3(X, Y):
+        return (1 - X) ** 2 + 100 * (Y - X ** 2) ** 2
+
+    ax1 = fig.add_subplot(231, projection='3d')
+    ax2 = fig.add_subplot(232, projection='3d')
+    ax3 = fig.add_subplot(233, projection='3d')
+    ax4 = fig.add_subplot(234, projection='3d')
+    ax5 = fig.add_subplot(235, projection='3d')
+    ax6 = fig.add_subplot(236, projection='3d')
+
+    ax1_contur = fig_contur.add_subplot(231)
+    ax2_contur = fig_contur.add_subplot(232)
+    ax3_contur = fig_contur.add_subplot(233)
+    ax4_contur = fig_contur.add_subplot(234)
+    ax5_contur = fig_contur.add_subplot(235)
+    ax6_contur = fig_contur.add_subplot(236)
+
+    axes = [ax1, ax2, ax3, ax4, ax5, ax6]
+    data_color = ["cyan", "magenta", "yellow", "red"]
+    levels = [
+        np.arange(0, 300, 1),
+        np.arange(-1, 10, 0.1),
+        np.arange(0, 4500, 10),
+    ]
+    x_min_point1, y_min_point1, z_min_point1 = 2.5, 1.25, 12.5
+    x_min_point2, y_min_point2, z_min_point2 = 0, 2, -1
+    x_min_point3, y_min_point3, z_min_point3 = 1, 1, 0
+
+    def plotter(ax, title, x_real_min, y_real_min, z_real_min, func_index, data_visual_index, calculate_z_func,
+                ax_contur, level):
+        ax.scatter(x_real_min, y_real_min, z_real_min, color='black', s=100)
+        cnt = 0
+        x_max = -1000000000
+        x_min = 1000000000
+        y_max = -1000000000
+        y_min = 1000000000
+        for data_set in data_visual[func_index][data_visual_index]:
+            ax.plot(data_set[0], data_set[1], data_set[2], color=data_color[cnt])
+            ax.scatter(data_set[0], data_set[1], data_set[2], color=data_color[cnt], s=10)
+            x_max = max(x_max, max(data_set[0]))
+            y_max = max(y_max, max(data_set[1]))
+            x_min = min(x_min, min(data_set[0]))
+            y_min = min(y_min, min(data_set[1]))
+            cnt += 1
+        X = np.linspace(x_min, x_max, 100)
+        Y = np.linspace(y_min, y_max, 100)
+        X, Y = np.meshgrid(X, Y)
+        X_contur = np.linspace(x_min - 1, x_max + 1, 1000)
+        Y_contur = np.linspace(y_min - 1, y_max + 1, 1000)
+        X_contur, Y_contur = np.meshgrid(X_contur, Y_contur)
+        Z = calculate_z_func(X, Y)
+        Z_contur = calculate_z_func(X_contur, Y_contur)
+        cp = ax_contur.contour(X_contur, Y_contur, Z_contur, levels=level)
+        plt.colorbar(cp)
+        cnt = 0
+        for data_set in data_visual[func_index][data_visual_index]:
+            ax_contur.plot(data_set[0], data_set[1], color=data_color[cnt], marker='o', markersize=1)
+            cnt += 1
+        ax_contur.scatter(x_real_min, y_real_min, color="black", s=100)
+        ax.plot_surface(X, Y, Z, cmap='viridis', alpha=0.2)
+        ax.set_title(title)
+
+    plotter(ax1, 'x^2 + (2x - 4y)^2 + (x-5)^2 | CONST', x_min_point1, y_min_point1, z_min_point1, 0, 0,
+            calculate_z1, ax1_contur, levels[0])
+    plotter(ax2, 'x^2 + y^2 - xy + 2x - 4y + 3 | CONST', x_min_point2, y_min_point2, z_min_point2, 1, 0,
+            calculate_z2, ax2_contur, levels[1])
+    plotter(ax3, '(1 - x)^2 + 100(y - x^2)^2  | CONST', x_min_point3, y_min_point3, z_min_point3, 2, 0,
+            calculate_z3, ax3_contur, levels[2])
+    plotter(ax4, 'x^2 + (2x - 4y)^2 + (x-5)^2 | TERN', x_min_point1, y_min_point1, z_min_point1, 0, 1,
+            calculate_z1, ax4_contur, levels[0])
+    plotter(ax5, 'x^2 + y^2 - xy + 2x - 4y + 3 | TERN', x_min_point2, y_min_point2, z_min_point2, 1, 1,
+            calculate_z2, ax5_contur, levels[1])
+    plotter(ax6, '(1 - x)^2 + 100(y - x^2)^2  | TERN', x_min_point3, y_min_point3, z_min_point3, 2, 1,
+            calculate_z3, ax6_contur, levels[2])
+
+    for ax in axes:
+        ax.set_xlabel('X')
+        ax.set_ylabel('Y')
+        ax.set_zlabel('Z')
+
+    plt.show()
+
+
+visual()
