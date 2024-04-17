@@ -30,6 +30,7 @@ class FUNCTION(enum.Enum):
     FUNC_1 = x ** 2 + (2 * x - 4 * y) ** 2 + (x - 5) ** 2
     FUNC_2 = x ** 2 + y ** 2 - x * y + 2 * x - 4 * y + 3
     FUNC_3 = (1 - x) ** 2 + 100 * (y - x ** 2) ** 2
+    FUNC4 = x ** 4 + y ** 4 - 4 * x * y
 
 
 class REGIME(enum.Enum):
@@ -41,15 +42,16 @@ class REGIME(enum.Enum):
     WOLFE_CONDITION = 5
 
 
-FUNCTIONS: list[FUNCTION] = [FUNCTION.FUNC_1, FUNCTION.FUNC_2, FUNCTION.FUNC_3]
-GLOBAL_MIN: list[float] = [25 / 2, -1, 0]
+FUNCTIONS: list[FUNCTION] = [FUNCTION.FUNC_1, FUNCTION.FUNC_2, FUNCTION.FUNC_3, FUNCTION.FUNC4]
+GLOBAL_MIN: list[float] = [25 / 2, -1, 0, -2]
 TYPES_METHODS: list[NAME] = [NAME.CONSTANT_STEP, NAME.CHANGING_STEP_TERNARY, NAME.NEWTON_CG, NAME.QUASI_NEWTON,
                              NAME.QUASI_SCIPY,
                              NAME.WOLFE_CONDITION]
 REGIMES: list[REGIME] = [REGIME.CONSTANT_STEP, REGIME.CHANGING_STEP_TERNARY, REGIME.NEWTON_CG, REGIME.QUASI_NEWTON,
                          NAME.QUASI_SCIPY,
                          REGIME.WOLFE_CONDITION]
-DISPLAY_FUNCTION = ["x^2 + (2x - 4y)^2 + (x-5)^2", "x^2 + y^2 - xy + 2x - 4y + 3", "(1 - x)^2 + 100(y - x^2)^2"]
+DISPLAY_FUNCTION = ["x^2 + (2x - 4y)^2 + (x-5)^2", "x^2 + y^2 - xy + 2x - 4y + 3", "(1 - x)^2 + 100(y - x^2)^2",
+                    "x^4 + y^4 - 4xy"]
 
 
 def gradient(dot, func: FUNCTION) -> tuple[float, ...]:
@@ -251,13 +253,9 @@ def newton(initial_dot: tuple[float, float],
 
 
 # Every point will be gone throw every learning rate for analysis
-INIT_POINTS: list[tuple[float, float] | tuple[None, None]] = []  # start points
-EPSILON = []  # EPS at which algorithm will stop
-CONSTANT_STEPS = []  # different learning rates
-for i in range(2):
-    INIT_POINTS.append((random.randint(1, 5), random.randint(1, 5)))
-    CONSTANT_STEPS.append(random.uniform(0.5, 1.5))
-    EPSILON.append(random.uniform(0, 0.01))
+INIT_POINTS: list[tuple[float, float] | tuple[None, None]] = [(1, 5), (3, 2), (0, 0)]  # start points
+EPSILON = [0.001, 0.0001, 0.001]  # EPS at which algorithm will stop
+CONSTANT_STEPS = [0.1, 0.01, 0.01]  # different learning rates
 
 legend_data = [[], []]
 legend_data2D1 = [[], []]
