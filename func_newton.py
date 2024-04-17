@@ -114,6 +114,15 @@ def get_s_k_hesse(func: FUNCTION, dot: tuple[float, float], grad_vector: tuple[f
 
 def step_by_wolfe_condition(func: FUNCTION, x_k: tuple[float, float], p_k, c1: float = 0.0001,
                             c2: float = 0.9) -> float:
+    """
+    This function generates a step size by wolfe condition
+    :param func:
+    :param x_k:
+    :param p_k:
+    :param c1:
+    :param c2:
+    :return:
+    """
     # f(x_k + k*p_k)
     f_x_k_k_p_k = lambda k: func.value.subs({x: x_k[0] + k * p_k[0], y: x_k[1] + k * p_k[1]})
     # f(x_k)
@@ -140,7 +149,7 @@ def step_by_wolfe_condition(func: FUNCTION, x_k: tuple[float, float], p_k, c1: f
 
 def bfgs_method(f: FUNCTION, x_0: tuple[float, float], eps=0.001) -> tuple[float, int]:
     """
-
+    BFGS way to create H_{k+1} matrix for Quasi-Newton's method'
     :param f: function for minimization
     :param grad: gradient function for minimization
     :param x_0: Initial guess
@@ -264,6 +273,16 @@ legend_data2D2 = [[], []]
 
 def fill_tables(col_names: list[str], tables: list[PrettyTable],
                 datas: list[list[typing.Any]], newton_name: NAME, regime: REGIME, results: list[list[tuple]]) -> None:
+    """
+    This function is used to fill tables that are represented with parameters
+    :param col_names:
+    :param tables:
+    :param datas:
+    :param newton_name:
+    :param regime:
+    :param results:
+    :return:
+    """
     experiment_number = 0
     for func in range(len(FUNCTIONS)):
         tables.append(PrettyTable(col_names))
@@ -425,6 +444,10 @@ cs2.clabel()
 
 
 def show_result():
+    """
+    Shows all graphics and tables of results
+    :return: void
+    """
     for i in range(len(TYPES_METHODS)):
         print(
             "################################################# {TYPE} ###############################################".format(
