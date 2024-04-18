@@ -1,8 +1,6 @@
-import random
 import time
 import typing
 import sympy as sp
-from matplotlib.axes import Axes
 from prettytable import PrettyTable
 from scipy import optimize
 import enum
@@ -115,12 +113,16 @@ def get_s_k_hesse(func: FUNCTION, dot: tuple[float, float], grad_vector: tuple[f
 def step_by_wolfe_condition(func: FUNCTION, x_k: tuple[float, float], p_k, c1: float = 0.0001,
                             c2: float = 0.9) -> float:
     """
-    This function generates a step size by wolfe condition
+    This function generates a step size by wolfe condition :
+    x_{k+1} = x_{k} + left * p_{k}
+    Search left(step), while
+    f(x_{k} + left * p_k) > f(x_{k}) + c_1 * left * grad(f_k)^T * p_k or
+    grad(f(x_{k} + left * p_k))^T * p_k < c_2 * grad(f_k)^T * p_k
     :param func:
     :param x_k:
     :param p_k:
-    :param c1:
-    :param c2:
+    :param c1: default c_1
+    :param c2: default c_2
     :return:
     """
     # f(x_k + k*p_k)
@@ -227,7 +229,6 @@ def normalize(dot_1: tuple[float, float], dot_2: tuple[float, float]) -> float:
     return sqrt((dot_1[0] - dot_2[0]) ** 2 + (dot_1[1] - dot_2[1]) ** 2)
 
 
-# Contract: return value : tuple[0] -> counted value; tuple[1] -> number of iterations
 def newton(initial_dot: tuple[float, float],
            eps: float,
            func: FUNCTION,
@@ -328,39 +329,42 @@ def fill_tables(col_names: list[str], tables: list[PrettyTable],
 data_visual = [[[], []], [[], []], [[], []]]
 
 
-def fill_graphic(results: list[list[tuple]], regime: REGIME, numbers_to_display: list[int],
-                 newton_name: NAME):
+def fill_methods_results(results: list[list[tuple]], regime: REGIME,
+                         newton_name: NAME):
+    """
+    Fills data of steps of newton method
+    :param results:
+    :param regime:
+    :param newton_name:
+    :return:
+    """
     exp_cnt = 0
     for func in range(len(FUNCTIONS)):
         results.append([])
         for i in range(len(INIT_POINTS)):
             for j in range(len(EPSILON)):
                 learning_rate = CONSTANT_STEPS[j]
-                try:
-                    start_time = time.time()
-                    buffer = newton(INIT_POINTS[i], EPSILON[j], FUNCTIONS[func],
-                                    regime,
-                                    learning_rate=learning_rate) if newton_name != NAME.QUASI_NEWTON else bfgs_method(
-                        FUNCTIONS[func], INIT_POINTS[i], EPSILON[j])
-                    end_time = time.time()
-                    res_iter_time = buffer[:2][0], buffer[:2][1], end_time - start_time
-                    results[func].append(res_iter_time)
-                    if func != 3 and i != 2 and j != 2:
-                        if newton_name != NAME.WOLFE_CONDITION and newton_name != NAME.QUASI_NEWTON:
-                            if regime == REGIME.CONSTANT_STEP:
-                                data_visual[func][0].append(buffer[2])
-                            if regime == REGIME.CHANGING_STEP_TERNARY:
-                                data_visual[func][1].append(buffer[2])
-                except OverflowError:
-                    results[func].append((None, None))
-                exp_cnt += 1
+                start_time = time.time()
+                buffer = newton(INIT_POINTS[i], EPSILON[j], FUNCTIONS[func],
+                                regime,
+                                learning_rate=learning_rate) if newton_name != NAME.QUASI_NEWTON else bfgs_method(
+                    FUNCTIONS[func], INIT_POINTS[i], EPSILON[j])
+                end_time = time.time()
+                res_iter_time = buffer[:2][0], buffer[:2][1], end_time - start_time
+                results[func].append(res_iter_time)
+                if func != 3 and i != 2 and j != 2:
+                    if newton_name != NAME.WOLFE_CONDITION and newton_name != NAME.QUASI_NEWTON:
+                        if regime == REGIME.CONSTANT_STEP:
+                            data_visual[func][0].append(buffer[2])
+                        if regime == REGIME.CHANGING_STEP_TERNARY:
+                            data_visual[func][1].append(buffer[2])
+            exp_cnt += 1
 
 
 def fill_data(col_names: list[str],
               tables: list[PrettyTable],
               datas: list[list[typing.Any]],
-              newton_name: NAME, regime: REGIME,
-              numbers_to_display: list[int]) -> None:
+              newton_name: NAME, regime: REGIME) -> None:
     """
     Fills the list of datas to put in the tables
     :param col_names: Names of the columns in the tables
@@ -378,7 +382,7 @@ def fill_data(col_names: list[str],
     # results tuple(iterations, value)
     results: list[list[tuple]] = []
     if newton_name != NAME.NEWTON_CG and newton_name != NAME.QUASI_SCIPY:
-        fill_graphic(results, regime, numbers_to_display, newton_name)
+        fill_methods_results(results, regime, newton_name)
     fill_tables(col_names, tables, datas, newton_name, regime, results)
 
 
@@ -415,7 +419,7 @@ def show_result():
                                    'VALUE', 'TIME']
         tables: list[PrettyTable] = []
         datas: list[list[typing.Any]] = []
-        fill_data(column_names, tables, datas, TYPES_METHODS[i], REGIMES[i], [1, 10])
+        fill_data(column_names, tables, datas, TYPES_METHODS[i], REGIMES[i])
         print_tables(column_names, tables, datas)
     plt.show()
 
@@ -463,12 +467,14 @@ def visual():
 
     def plotter(ax, title, x_real_min, y_real_min, z_real_min, func_index, data_visual_index, calculate_z_func,
                 ax_contur, level):
+        # mark real_min dot on function graphic
         ax.scatter(x_real_min, y_real_min, z_real_min, color='black', s=100)
         cnt = 0
         x_max = -1000000000
         x_min = 1000000000
         y_max = -1000000000
         y_min = 1000000000
+        # plot all the steps of the newton method
         for data_set in data_visual[func_index][data_visual_index]:
             ax.plot(data_set[0], data_set[1], data_set[2], color=data_color[cnt])
             ax.scatter(data_set[0], data_set[1], data_set[2], color=data_color[cnt], s=10)
@@ -477,6 +483,7 @@ def visual():
             x_min = min(x_min, min(data_set[0]))
             y_min = min(y_min, min(data_set[1]))
             cnt += 1
+        # build grid for function and contour
         X = np.linspace(x_min, x_max, 100)
         Y = np.linspace(y_min, y_max, 100)
         X, Y = np.meshgrid(X, Y)
@@ -485,13 +492,17 @@ def visual():
         X_contur, Y_contur = np.meshgrid(X_contur, Y_contur)
         Z = calculate_z_func(X, Y)
         Z_contur = calculate_z_func(X_contur, Y_contur)
+        # plot the contour for graphic
         cp = ax_contur.contour(X_contur, Y_contur, Z_contur, levels=level)
         plt.colorbar(cp)
         cnt = 0
+        # plot newton steps on contour
         for data_set in data_visual[func_index][data_visual_index]:
             ax_contur.plot(data_set[0], data_set[1], color=data_color[cnt], marker='o', markersize=1)
             cnt += 1
+        # plot minimum dot on contour
         ax_contur.scatter(x_real_min, y_real_min, color="black", s=100)
+        # plot function
         ax.plot_surface(X, Y, Z, cmap='viridis', alpha=0.2)
         ax.set_title(title)
 
