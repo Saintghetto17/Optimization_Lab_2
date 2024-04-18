@@ -334,6 +334,8 @@ def fill_tables(col_names: list[str], tables: list[PrettyTable],
 
 data_visual = [[[], []], [[], []], [[], []]]
 
+data_visual_non_poly = [[], []]
+
 
 def fill_methods_results(results: list[list[tuple]], regime: REGIME,
                          newton_name: NAME):
@@ -364,6 +366,12 @@ def fill_methods_results(results: list[list[tuple]], regime: REGIME,
                             data_visual[func][0].append(buffer[2])
                         if regime == REGIME.CHANGING_STEP_TERNARY:
                             data_visual[func][1].append(buffer[2])
+                if func == 4 and i != 2 and j != 2:
+                    if newton_name != NAME.WOLFE_CONDITION and newton_name != NAME.QUASI_NEWTON:
+                        if regime == REGIME.CONSTANT_STEP:
+                            data_visual_non_poly[0].append(buffer[2])
+                        if regime == REGIME.CHANGING_STEP_TERNARY:
+                            data_visual_non_poly[1].append(buffer[2])
             exp_cnt += 1
 
 
@@ -436,6 +444,7 @@ show_result()
 def visual():
     fig = plt.figure(figsize=(21, 7))
     fig_contur = plt.figure(figsize=(21, 7))
+    fig_non_poly = plt.figure(figsize=(21, 7))
 
     def calculate_z1(X, Y):
         return X ** 2 + (2 * X - 4 * Y) ** 2 + (X - 5) ** 2
@@ -445,6 +454,9 @@ def visual():
 
     def calculate_z3(X, Y):
         return (1 - X) ** 2 + 100 * (Y - X ** 2) ** 2
+
+    def calculate_z5(X, Y):
+        return X ** 2 * (np.cos(X) + 2) + Y ** 2 * (np.sin(Y) + 12)
 
     ax1 = fig.add_subplot(231, projection='3d')
     ax2 = fig.add_subplot(232, projection='3d')
@@ -460,16 +472,63 @@ def visual():
     ax5_contur = fig_contur.add_subplot(235)
     ax6_contur = fig_contur.add_subplot(236)
 
+    ax1_non_poly = fig_non_poly.add_subplot(221, projection='3d')
+    ax2_non_poly = fig_non_poly.add_subplot(222)
+
+    ax3_non_poly = fig_non_poly.add_subplot(223, projection='3d')
+    ax4_non_poly = fig_non_poly.add_subplot(224)
+
     axes = [ax1, ax2, ax3, ax4, ax5, ax6]
     data_color = ["cyan", "magenta", "yellow", "red"]
     levels = [
         np.arange(0, 300, 1),
         np.arange(-1, 10, 0.1),
         np.arange(0, 4500, 10),
+        np.arange(0, 100, 1),
     ]
     x_min_point1, y_min_point1, z_min_point1 = 2.5, 1.25, 12.5
     x_min_point2, y_min_point2, z_min_point2 = 0, 2, -1
     x_min_point3, y_min_point3, z_min_point3 = 1, 1, 0
+
+    x_min_point5, y_min_point5, z_min_point5 = 0, 0, 0
+
+    X_non_poly = np.linspace(-5, 5, 100)
+    Y_non_poly = np.linspace(-5, 5, 100)
+    X_non_poly, Y_non_poly = np.meshgrid(X_non_poly, Y_non_poly)
+
+    X_non_poly45 = np.linspace(-5, 45, 100)
+    Y_non_poly45 = np.linspace(-5, 5, 100)
+    X_non_poly45, Y_non_poly45 = np.meshgrid(X_non_poly45, Y_non_poly45)
+
+    X_contur = np.linspace(-5, 5, 100)
+    Y_contur = np.linspace(-5, 5, 100)
+
+    X_contur, Y_contur = np.meshgrid(X_contur, Y_contur)
+    Z = calculate_z5(X_non_poly, Y_non_poly)
+    Z45 = calculate_z5(X_non_poly45, Y_non_poly45)
+    Z_contur = calculate_z5(X_contur, Y_contur)
+
+    cp = ax2_non_poly.contour(X_contur, Y_contur, Z_contur, levels=levels[3])
+    plt.colorbar(cp)
+    ax1_non_poly.plot_surface(X_non_poly45, Y_non_poly45, Z45, cmap='viridis', alpha=0.5)
+    ax1_non_poly.set_title("x ** 2 * (cos(x) + 2) + y ** 2 * (sin(y) + 12) | CONST")
+
+    ax1_non_poly.scatter(x_min_point5, y_min_point5, z_min_point5, color='black', s=100)
+    ax3_non_poly.scatter(x_min_point5, y_min_point5, z_min_point5, color='black', s=100)
+    ax2_non_poly.scatter(x_min_point5, y_min_point5, color="black", s=100)
+    ax4_non_poly.scatter(x_min_point5, y_min_point5, color="black", s=100)
+
+    cp = ax4_non_poly.contour(X_contur, Y_contur, Z_contur, levels=levels[3])
+    plt.colorbar(cp)
+    ax3_non_poly.plot_surface(X_non_poly, Y_non_poly, Z, cmap='viridis', alpha=0.5)
+    ax3_non_poly.set_title("x ** 2 * (cos(x) + 2) + y ** 2 * (sin(y) + 12) | TERNARY")
+
+    for data_set in data_visual_non_poly[0]:
+        ax1_non_poly.plot(data_set[0], data_set[1], data_set[2], marker='o', markersize=1)
+        ax2_non_poly.plot(data_set[0], data_set[1], marker='o', markersize=1)
+    for data_set in data_visual_non_poly[1]:
+        ax3_non_poly.plot(data_set[0], data_set[1], data_set[2], marker='o', markersize=1)
+        ax4_non_poly.plot(data_set[0], data_set[1], marker='o', markersize=1)
 
     def plotter(ax, title, x_real_min, y_real_min, z_real_min, func_index, data_visual_index, calculate_z_func,
                 ax_contur, level):
@@ -534,3 +593,4 @@ def visual():
 
 
 visual()
+
