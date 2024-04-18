@@ -72,7 +72,7 @@ def ternary_search_min(func: typing.Callable[[tuple[float, float]], float],
                        left: float,
                        right: float,
                        grad: tuple[float, ...],
-                       dot: tuple[float, float]) -> float:
+                       dot: tuple[float, float], iterations: int) -> tuple[float, int]:
     """
     Ternary Search for finding the minimum on interval. F : R -> R
     :param func: Function for finding a minimum : R -> R
@@ -83,15 +83,15 @@ def ternary_search_min(func: typing.Callable[[tuple[float, float]], float],
     :return: Founded min value
     """
     if right - left < EPS_SEARCH:
-        return (left + right) / 2
+        return (left + right) / 2, iterations
     a: float = (left * 2 + right) / 3
     b: float = (left + right * 2) / 3
     a_dot: tuple[float, float] = (dot[0] - a * grad[0], dot[1] - a * grad[1])
     b_dot: tuple[float, float] = (dot[0] - b * grad[0], dot[1] - b * grad[1])
     if func(a_dot) < func(b_dot):
-        return ternary_search_min(func, left, b, grad, dot)
+        return ternary_search_min(func, left, b, grad, dot, iterations + 1)
     else:
-        return ternary_search_min(func, a, right, grad, dot)
+        return ternary_search_min(func, a, right, grad, dot, iterations + 1)
 
 
 def get_s_k_hesse(func: FUNCTION, dot: tuple[float, float], grad_vector: tuple[float, ...]) -> tuple[float, ...]:
@@ -111,7 +111,7 @@ def get_s_k_hesse(func: FUNCTION, dot: tuple[float, float], grad_vector: tuple[f
 
 
 def step_by_wolfe_condition(func: FUNCTION, x_k: tuple[float, float], p_k, c1: float = 0.0001,
-                            c2: float = 0.9) -> float:
+                            c2: float = 0.9) -> tuple[float, int]:
     """
     This function generates a step size by wolfe condition :
     x_{k+1} = x_{k} + left * p_{k}
@@ -135,18 +135,21 @@ def step_by_wolfe_condition(func: FUNCTION, x_k: tuple[float, float], p_k, c1: f
     p_k_vector = np.array([[pk] for pk in p_k])
     # grad_f(x_k)^T * p_k
     grad_f_k_transposed_p_k_prod = (grad_vector_x_k_transposed @ p_k_vector)[0][0]
-    left = -5
-    right = 5
+    left = -3
+    right = 3
+    iterations = 1
+    step = 0.2
     while left < right:
+        iterations += 1
         # grad_f(x_k + k * p_k) ^ T
         grad_vector_x_k_k_p_k_transposed = np.array([gradient((x_k[0] + left * p_k[0], x_k[1] + left * p_k[1]), func)])
         # grad_f(x_k + k * p_k) ^ T * p_k
         grad_vector_x_k_k_p_k_transposed_prod = (grad_vector_x_k_k_p_k_transposed @ p_k_vector)[0][0]
         if (f_x_k_k_p_k(left) <= f_x_k + c1 * left * grad_f_k_transposed_p_k_prod and
                 grad_vector_x_k_k_p_k_transposed_prod >= c2 * grad_f_k_transposed_p_k_prod):
-            return left
-        left += 0.2
-    return 1
+            return left, iterations
+        left += step
+    return 1, int((right - left) / step)
 
 
 def bfgs_method(f: FUNCTION, x_0: tuple[float, float], eps=0.001) -> tuple[float, int]:
@@ -197,7 +200,7 @@ def next_step(prev_dot: tuple[float, float],
               gradient_vector: tuple[float, ...],
               regime: REGIME,
               func: FUNCTION,
-              constant_step: float | None = None) -> tuple[float, float]:
+              constant_step: float | None = None) -> tuple[tuple[float, float], int]:
     """
     The help function inside gradient algorithm. Used to step from x_{k} -> x_{k+1}.
     :param prev_dot: x_{k}
@@ -209,14 +212,14 @@ def next_step(prev_dot: tuple[float, float],
     """
     s_k = get_s_k_hesse(func, prev_dot, gradient_vector)
     if regime == REGIME.CONSTANT_STEP:
-        return prev_dot[0] - constant_step * s_k[0], prev_dot[1] - constant_step * s_k[1]
+        return (prev_dot[0] - constant_step * s_k[0], prev_dot[1] - constant_step * s_k[1]), 1
     elif regime == REGIME.CHANGING_STEP_TERNARY:
-        step: float = ternary_search_min(lambda xy: func.value.subs({x: xy[0], y: xy[1]}), -5, 5,
-                                         s_k, prev_dot)
-        return prev_dot[0] - step * s_k[0], prev_dot[1] - step * s_k[1]
+        step, iterations = ternary_search_min(lambda xy: func.value.subs({x: xy[0], y: xy[1]}), -5, 5,
+                                              s_k, prev_dot, 1)
+        return (prev_dot[0] - step * s_k[0], prev_dot[1] - step * s_k[1]), iterations
     elif regime == REGIME.WOLFE_CONDITION:
-        step: float = step_by_wolfe_condition(func, prev_dot, (-s_k[0], -s_k[1]))
-        return prev_dot[0] - step * s_k[0], prev_dot[1] - step * s_k[1]
+        step, iterations = step_by_wolfe_condition(func, prev_dot, (-s_k[0], -s_k[1]))
+        return (prev_dot[0] - step * s_k[0], prev_dot[1] - step * s_k[1]), iterations
 
 
 def normalize(dot_1: tuple[float, float], dot_2: tuple[float, float]) -> float:
@@ -254,8 +257,9 @@ def newton(initial_dot: tuple[float, float],
     while True:
         iterations += 1
         current_gradient: tuple[float, ...] = gradient(prev_dot, func)
-        current_dot: tuple[float, float] = next_step(prev_dot, current_gradient, regime, func,
-                                                     constant_step=learning_rate)
+        current_dot, it = next_step(prev_dot, current_gradient, regime, func,
+                                    constant_step=learning_rate)
+        iterations += it
         current_func_value: float = func.value.subs({x: current_dot[0], y: current_dot[1]})
         cord_data[0].append(current_dot[0])
         cord_data[1].append(current_dot[1])
