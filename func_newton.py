@@ -1,3 +1,4 @@
+import math
 import time
 import typing
 import sympy as sp
@@ -29,6 +30,7 @@ class FUNCTION(enum.Enum):
     FUNC_2 = x ** 2 + y ** 2 - x * y + 2 * x - 4 * y + 3
     FUNC_3 = (1 - x) ** 2 + 100 * (y - x ** 2) ** 2
     FUNC_4 = x ** 4 + y ** 4 - 4 * x * y
+    FUNC_5 = x ** 2 * (sp.cos(x) + 2) + y ** 2 * (sp.sin(y) + 12)
 
 
 class REGIME(enum.Enum):
@@ -40,8 +42,8 @@ class REGIME(enum.Enum):
     WOLFE_CONDITION = 5
 
 
-FUNCTIONS: list[FUNCTION] = [FUNCTION.FUNC_1, FUNCTION.FUNC_2, FUNCTION.FUNC_3, FUNCTION.FUNC_4]
-GLOBAL_MIN: list[float] = [25 / 2, -1, 0, -2]
+FUNCTIONS: list[FUNCTION] = [FUNCTION.FUNC_1, FUNCTION.FUNC_2, FUNCTION.FUNC_3, FUNCTION.FUNC_4, FUNCTION.FUNC_5]
+GLOBAL_MIN: list[float] = [25 / 2, -1, 0, -2, 0]
 TYPES_METHODS: list[NAME] = [NAME.CONSTANT_STEP, NAME.CHANGING_STEP_TERNARY, NAME.NEWTON_CG, NAME.QUASI_NEWTON,
                              NAME.QUASI_SCIPY,
                              NAME.WOLFE_CONDITION]
@@ -49,7 +51,7 @@ REGIMES: list[REGIME] = [REGIME.CONSTANT_STEP, REGIME.CHANGING_STEP_TERNARY, REG
                          NAME.QUASI_SCIPY,
                          REGIME.WOLFE_CONDITION]
 DISPLAY_FUNCTION = ["x^2 + (2x - 4y)^2 + (x-5)^2", "x^2 + y^2 - xy + 2x - 4y + 3", "(1 - x)^2 + 100(y - x^2)^2",
-                    "x^4 + y^4 - 4xy"]
+                    "x^4 + y^4 - 4xy", "x^2 * (cos(x) + 2) + y^2 * (sin(y) + 12)"]
 
 
 def gradient(dot, func: FUNCTION) -> tuple[float, ...]:
@@ -356,7 +358,7 @@ def fill_methods_results(results: list[list[tuple]], regime: REGIME,
                 end_time = time.time()
                 res_iter_time = buffer[:2][0], buffer[:2][1], end_time - start_time
                 results[func].append(res_iter_time)
-                if func != 3 and i != 2 and j != 2:
+                if func != 3 and func != 4 and i != 2 and j != 2:
                     if newton_name != NAME.WOLFE_CONDITION and newton_name != NAME.QUASI_NEWTON:
                         if regime == REGIME.CONSTANT_STEP:
                             data_visual[func][0].append(buffer[2])
